@@ -3,19 +3,19 @@ from django.db import models
 
 class User(AbstractUser):
     ROLE_CHOICES = (
-        ('admin', 'Admin'),
-        ('user', 'User'),
+        ('user', 'Utilisateur'),
+        ('admin', 'Administrateur'),
     )
     
-    role = models.CharField(
-        max_length=10,
-        choices=ROLE_CHOICES,
-        default='user'
-    )
-    
-    def __str__(self):
-        return f"{self.username} ({self.role})"
+    email = models.EmailField(unique=True)
+    role = models.CharField(max_length=10, choices=ROLE_CHOICES, default='user')
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
     
     class Meta:
+        ordering = ['-created_at']
         verbose_name = 'Utilisateur'
         verbose_name_plural = 'Utilisateurs'
+    
+    def __str__(self):
+        return self.username

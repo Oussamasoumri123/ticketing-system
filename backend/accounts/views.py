@@ -1,53 +1,77 @@
-from rest_framework import status
-from rest_framework.decorators import api_view, permission_classes
-from rest_framework.permissions import AllowAny
+from rest_framework import generics, status
 from rest_framework.response import Response
+from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework_simplejwt.tokens import RefreshToken
-from django.contrib.auth import authenticate
-from tickets.serializers import UserSerializer, RegisterSerializer
+from django.contrib.auth import get_user_model
+from .serializers import RegisterSerializer, UserSerializer
 
+User = get_user_model()
 
-@api_view(['POST'])
-@permission_classes([AllowAny])
-def register_view(request):
-    serializer = RegisterSerializer(data=request.data)
-    if serializer.is_valid():
+class RegisterView(generics.CreateAPIView):
+    queryset = User.objects.all()
+    permission_classes = (AllowAny,)
+    serializer_class = RegisterSerializer
+    
+    def create(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+        
+        # Validation des données
+        if not serializer.is_valid():
+            # Retourner des erreurs détaillées
+            return Response(
+                serializer.errors,
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Créer l'utilisateur
         user = serializer.save()
+        
+        # Générer les tokens JWT
         refresh = RefreshToken.for_user(user)
+        
         return Response({
             'user': UserSerializer(user).data,
-            'access': str(refresh.access_token),
             'refresh': str(refresh),
-            'message': 'Utilisateur créé avec succès'
+            'access': str(refresh.access_token),
+            'message': 'Inscription réussie'
         }, status=status.HTTP_201_CREATED)
-    return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
-@api_view(['POST'])
-@permission_classes([AllowAny])
-def login_view(request):
-    username = request.data.get('username')
-    password = request.data.get('password')
-
-    user = authenticate(username=username, password=password)
-
-    if user:
+class LoginView(generics.GenericAPIView):
+    permission_classes = (AllowAny,)
+    
+    def post(self, request):
+        from django.contrib.auth import authenticate
+        
+        username = request.data.get('username')
+        password = request.data.get('password')
+        
+        if not username or not password:
+            return Response(
+                {'detail': 'Veuillez fournir un nom d\'utilisateur et un mot de passe'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        user = authenticate(username=username, password=password)
+        
+        if user is None:
+            return Response(
+                {'detail': 'Identifiants invalides'},
+                status=status.HTTP_401_UNAUTHORIZED
+            )
+        
         refresh = RefreshToken.for_user(user)
+        
         return Response({
             'user': UserSerializer(user).data,
-            'access': str(refresh.access_token),
             'refresh': str(refresh),
-            'message': 'Connexion réussie'
+            'access': str(refresh.access_token),
         })
-    return Response({'error': 'Identifiants invalides'}, status=401)
 
 
-@api_view(['POST'])
-def logout_view(request):
-    try:
-        refresh_token = request.data.get('refresh')
-        token = RefreshToken(refresh_token)
-        token.blacklist()
-        return Response({'message': 'Déconnexion réussie'})
-    except:
-        return Response({'error': 'Token invalide'}, status=400)
+class MeView(generics.RetrieveAPIView):
+    permission_classes = (IsAuthenticated,)
+    serializer_class = UserSerializer
+    
+    def get_object(self):
+        return self.request.user
